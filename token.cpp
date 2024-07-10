@@ -1,4 +1,5 @@
 #include <string>
+#include <map>
 
 using namespace std;
 
@@ -18,9 +19,33 @@ struct Token
 class Token_stream
 {
 public:
-    Token get();            // read and return next token
-    const Token &current(); // most recently read token
-    // ...
+    Token_stream(istream &s) : ip{&s}, owns{false} {}
+    Token_stream(istream* p) : ip{p}, owns{true} {}
+    ~Token_stream() { close(); }
+    Token get();      // read and return next token
+    Token &current(); // most recently read token
+    void set_input(istream &s)
+    {
+        close();
+        ip = &s;
+        owns = false;
+    }
+    void set_input(istream* p)
+    {
+        close();
+        ip = p;
+        owns = true;
+    }
+
+private:
+    void close()
+    {
+        if (owns)
+            delete ip;
+    }
+    istream* ip;          // pointer to an input stream
+    bool owns;           // does the Token_stream own the istream?
+    Token ct{Kind::end}; // current token
 };
 
 // expr() handles addition and subtraction
@@ -64,5 +89,43 @@ double term(bool get) // multiply and divide
         default:
             return left;
         }
+    }
+}
+
+map<string, double> table;
+double expr(bool);
+
+// prim() goes lower in the hierarchy
+double prim(bool get) // handle primaries
+{
+    if (get)
+        ts.get(); // read next token
+    switch (ts.current().kind)
+    {
+        case Kind::number: // floating-point constant
+        {
+            double v = ts.current().number_value;
+            ts.get();
+            return v;
+        }
+        case Kind::name:
+        {
+            double &v = table[ts.current().string_value]; // find the corresponding
+            if (ts.get().kind == Kind::assign)
+                v = expr(true); // ’=’ seen: assignment
+            return v;
+        }
+        case Kind::minus: // unar y minus
+            return -prim(true);
+        case Kind::lp:
+        {
+            auto e = expr(true);
+            if (ts.current().kind != Kind::rp)
+                return error("')' expected");
+            ts.get(); // eat ’)’
+            return e;
+        }
+        default:
+            return error("primar y expected");
     }
 }
